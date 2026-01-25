@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if metadata and metadata.date %}
+      <section class="date">
+        <p class="indent-text">Published: {{ metadata.date.strftime('%Y-%m-%d') }}</p>
+      </section>
+{% endif %}
+
+      <section class="information">
+        {{ content | safe }}
+      </section>
+
+{% if downloads %}
+      <section class="download">
+        <h3>Download</h3>
+        <ul class="indent-list">
+{% for item in downloads %}
+          <li><a href="{{ item.url }}">{{ item.text }}</a></li>
+{% endfor %}
+        </ul>
+      </section>
+{% endif %}
+{% endblock %}

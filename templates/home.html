@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+      <section class="information">
+        {{ content | safe }}
+      </section>
+
+{% for section_key, pages in sections.items() %}
+  {% if pages %}
+      <section class="{{ section_key }}">
+        <h3>{{ section_key|capitalize }}</h3>
+        <ul class="indent-list">
+    {% for page in pages %}
+          <li><a href="pages/{{ page.slug }}.html">{{ page.title }}</a></li>
+    {% endfor %}
+        </ul>
+      </section>
+  {% endif %}
+{% endfor %}
+
+{% if users %}
+      <section class="users">
+        <h3>Users</h3>
+        <ul class="indent-list">
+    {% for user in users %}
+          <li><a href="{{ user.name }}/index.html">{{ user.name | replace('~', '') }}</a></li>
+    {% endfor %}
+        </ul>
+      </section>
+{% endif %}
+{% endblock %}

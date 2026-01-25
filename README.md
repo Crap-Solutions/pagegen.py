@@ -87,6 +87,21 @@ Four templates are provided:
 - `page.html` — Regular pages
 - `blog_index.html` — User blog index
 
+## Testing
+
+Run unit tests:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+Run specific test:
+
+```bash
+pytest tests/test_generator.py::test_parse_frontmatter_with_yaml
+```
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) file.

@@ -1,0 +1,4 @@
+---
+---
+
+Empty YAML frontmatter.

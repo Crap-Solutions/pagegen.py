@@ -227,7 +227,7 @@ def generate_site(args):
 
     # Add slug to each blog post for template use
     for username, posts in blog_posts_by_user.items():
-        posts.sort(key=lambda x: x['metadata'].get('date', ''), reverse=True)
+        posts.sort(key=lambda x: str(x['metadata'].get('date', '')), reverse=True)
         for post in posts:
             filename = post['path'].name
             slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)

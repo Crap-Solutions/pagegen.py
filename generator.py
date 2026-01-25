@@ -402,7 +402,7 @@ def generate_site(args):
         print(f"Generated: {output_path.relative_to(output_root)}")
 
     # Copy static files
-    static_root = Path(__file__).parent / 'static'
+    static_root = Path(args.static)
     if static_root.exists():
         for item in static_root.rglob('*'):
             if item.is_file():
@@ -419,6 +419,7 @@ def main():
     parser.add_argument('--content', default='content', help='Content directory (default: content)')
     parser.add_argument('--output', default='output', help='Output directory (default: output)')
     parser.add_argument('--config', default='config.yaml', help='Config file (default: config.yaml)')
+    parser.add_argument('--static', default='static', help='Static files directory (default: static)')
 
     args = parser.parse_args()
     generate_site(args)

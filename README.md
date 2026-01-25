@@ -29,7 +29,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python generator.py [--content CONTENT] [--output OUTPUT] [--config CONFIG] [--static STATIC]
+python generator.py [--content CONTENT] [--output OUTPUT] [--config CONFIG] [--static STATIC] [--templates TEMPLATES]
 ```
 
 ### Default locations
@@ -40,10 +40,10 @@ python generator.py [--content CONTENT] [--output OUTPUT] [--config CONFIG] [--s
 - `templates/` — Jinja2 templates
 - `static/` — Static assets (CSS, images, etc.)
 
-When using pagegen.py as a submodule in another project, you typically want to override the static directory:
+When using pagegen.py as a submodule in another project, you typically want to override the templates and static directories:
 
 ```bash
-python lib/pagegen/generator.py --config config.yaml --static static
+python lib/pagegen/generator.py --config config.yaml --templates templates --static static
 ```
 
 ## Content Structure

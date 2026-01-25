@@ -174,16 +174,14 @@ def get_current_year(format_str='%Y'):
 def generate_site(args):
     content_root = Path(args.content).resolve()
     output_root = Path(args.output).resolve()
-    templates_root = Path(__file__).parent / 'templates'
+    templates_root = Path(args.templates).resolve()
 
     # Initialize Jinja environment
     env = Environment(loader=FileSystemLoader(str(templates_root)))
     env.globals['now'] = get_current_year
 
     # Load config
-    config_path = Path(__file__).parent / 'config.yaml'
-    if not config_path.exists():
-        config_path = Path(args.config).resolve()
+    config_path = Path(args.config).resolve()
 
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
@@ -420,6 +418,7 @@ def main():
     parser.add_argument('--output', default='output', help='Output directory (default: output)')
     parser.add_argument('--config', default='config.yaml', help='Config file (default: config.yaml)')
     parser.add_argument('--static', default='static', help='Static files directory (default: static)')
+    parser.add_argument('--templates', default='templates', help='Templates directory (default: templates)')
 
     args = parser.parse_args()
     generate_site(args)

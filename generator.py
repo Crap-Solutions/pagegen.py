@@ -25,12 +25,16 @@ def parse_frontmatter(content):
         end = content.find('\n---', 4)
         if end != -1:
             frontmatter = content[4:end].strip()
-            body = content[end + 4:].strip()
+            body = content[end + 5:].lstrip('\n')
+            # Remove any leading ---\n markers from body (edge case)
+            while body.startswith('---'):
+                body = body[body.find('\n---') + 4:].lstrip('\n')
             try:
                 metadata = yaml.safe_load(frontmatter) or {}
                 return metadata, body
             except yaml.YAMLError:
-                pass
+                # If YAML parse fails, treat entire content as body
+                return {}, content
     return {}, content
 
 
@@ -70,15 +74,22 @@ def get_output_path(source_path, content_root, output_root):
         username = parts[0]
 
         # User index: content/~user/index.md -> output/~user/index.html
-        if parts[-1] == 'index.md':
+        if len(parts) == 2 and parts[-1] == 'index.md':
             return output_root / username / 'index.html'
 
         # Blog post: extract slug from filename
-        filename = parts[-1]
-        # Remove date prefix if present (YYYY-MM-DD- or YYYY_M_D-)
-        slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)
-        slug = re.sub(r'\.md$', '', slug)
-        return output_root / username / f'{slug}.html'
+        if len(parts) == 2:
+            filename = parts[-1]
+            # Remove date prefix if present (YYYY-MM-DD- or YYYY_M_D-)
+            slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)
+            slug = re.sub(r'\.md$', '', slug)
+            return output_root / username / f'{slug}.html'
+
+        # Nested user folder: content/~user/category/index.md -> output/~user/category.html
+        if len(parts) > 2 and parts[-1] == 'index.md':
+            filename = parts[-2]  # category
+            filename_with_ext = f'{filename}.html'
+            return output_root / username / filename_with_ext
 
     # Standard pages: content/about.md -> output/pages/about.html
     return output_root / 'pages' / rel_path.with_suffix('.html').name

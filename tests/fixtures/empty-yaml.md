@@ -1,4 +1,4 @@
 ---
 ---
 
-Empty YAML frontmatter.
+Empty YAML frontmatter (should have no dashes in body).

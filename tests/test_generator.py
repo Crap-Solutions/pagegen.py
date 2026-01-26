@@ -99,6 +99,17 @@ def test_get_output_path_regular_page():
     assert result == output_root / 'pages/about.html'
 
 
+def test_get_output_path_nested_user_folder():
+    """Test output path for nested user folder"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+    
+    source = content_root / '~user/category/index.md'
+    result = get_output_path(source, content_root, output_root)
+    
+    assert result == output_root / '~user/category.html'
+
+
 def test_get_home_link_root():
     """Test home link at root"""
     output_path = Path('/output')

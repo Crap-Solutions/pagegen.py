@@ -173,16 +173,17 @@ def test_get_relative_css_depth_two_levels():
 def test_date_sorting_mixed_types():
     """Test sorting works with mixed date types (str and datetime.date)"""
     from datetime import date
-    
+
     posts = [
         {'metadata': {'date': date(2026, 1, 25)}},
         {'metadata': {'date': ''}},
         {'metadata': {'date': date(2026, 1, 20)}},
     ]
-    
-    sorted_posts = sorted(posts, key=lambda x: x['metadata'].get('date', ''), reverse=True)
-    
-    # Empty strings should come last
-    assert sorted_posts[1]['metadata']['date'] == ''
+
+    sorted_posts = sorted(posts, key=lambda x: str(x['metadata'].get('date', '')), reverse=True)
+
+    # When converted to strings and sorted descending:
+    # '2026-01-25' > '2026-01-20' > ''
     assert sorted_posts[0]['metadata']['date'] == date(2026, 1, 25)
-    assert sorted_posts[2]['metadata']['date'] == date(2026, 1, 20)
+    assert sorted_posts[1]['metadata']['date'] == date(2026, 1, 20)
+    assert sorted_posts[2]['metadata']['date'] == ''

@@ -22,29 +22,26 @@ def parse_frontmatter(content):
     """
     content = content.strip()
     if content.startswith('---'):
-        end = content.find('\n---', 4)
+        end = content.find('\n---', 3)
         if end != -1:
             frontmatter = content[4:end].strip()
             body = content[end + 5:].lstrip('\n')
-            # Remove any leading ---\n markers from body (edge case)
-            while body.startswith('---'):
-                body = body[body.find('\n---') + 4:].lstrip('\n')
             try:
                 metadata = yaml.safe_load(frontmatter) or {}
                 return metadata, body
             except yaml.YAMLError:
-                # If YAML parse fails, treat entire content as body
-                return {}, content
+                # If YAML parse fails, return empty metadata with body content
+                return {}, body
     return {}, content
 
 
 def get_relative_css_depth(source_path, content_root, output_root):
     """
-    Calculate relative path to CSS file based on output path depth.
+    Calculate relative path to CSS file based on source path depth.
     Returns string like '' (for root), '../', '../../', etc.
     """
-    output_path = get_output_path(source_path, content_root, output_root)
-    depth = len(output_path.relative_to(output_root).parent.parts)
+    rel_path = source_path.relative_to(content_root)
+    depth = len(rel_path.parent.parts)
     return '../' * depth
 
 

@@ -6,3 +6,5 @@ venv/
 .DS_Store
 *.swp
 *~
+.pytest_cache/
+.claude/

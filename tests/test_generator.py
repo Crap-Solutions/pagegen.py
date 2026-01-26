@@ -160,14 +160,16 @@ def test_get_relative_css_depth_one_level():
 
 
 def test_get_relative_css_depth_two_levels():
-    """Test CSS relative depth two levels deep"""
+    """Test CSS relative depth for nested user folder"""
     content_root = Path('/content')
     output_root = Path('/output')
-    
+
+    # ~user/category/index.md outputs to ~user/category.html
+    # Parent is ~user (1 part), so depth is 1 -> ../
     source = content_root / '~user/category/index.md'
     result = get_relative_css_depth(source, content_root, output_root)
-    
-    assert result == '../../'
+
+    assert result == '../'
 
 
 def test_date_sorting_mixed_types():

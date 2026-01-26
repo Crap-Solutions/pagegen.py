@@ -37,11 +37,11 @@ def parse_frontmatter(content):
 
 def get_relative_css_depth(source_path, content_root, output_root):
     """
-    Calculate relative path to CSS file based on source path depth.
+    Calculate relative path to CSS file based on output path depth.
     Returns string like '' (for root), '../', '../../', etc.
     """
-    rel_path = source_path.relative_to(content_root)
-    depth = len(rel_path.parent.parts)
+    output_path = get_output_path(source_path, content_root, output_root)
+    depth = len(output_path.relative_to(output_root).parent.parts)
     return '../' * depth
 
 

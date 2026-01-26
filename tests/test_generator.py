@@ -20,6 +20,8 @@ from generator import (
     get_output_path,
     get_home_link,
     get_relative_css_depth,
+    render_markdown,
+    get_current_year,
 )
 
 
@@ -189,3 +191,153 @@ def test_date_sorting_mixed_types():
     assert sorted_posts[0]['metadata']['date'] == date(2026, 1, 25)
     assert sorted_posts[1]['metadata']['date'] == date(2026, 1, 20)
     assert sorted_posts[2]['metadata']['date'] == ''
+
+
+# ============================================================================
+# Additional parse_frontmatter tests
+# ============================================================================
+
+def test_parse_frontmatter_multiple_fields():
+    """Test parsing YAML with multiple fields"""
+    from datetime import date
+    content = "---\ntitle: Test Title\ndate: 2025-01-25\nauthor: John\n---\nBody content"
+    metadata, body = parse_frontmatter(content)
+    assert metadata == {
+        'title': 'Test Title',
+        'date': date(2025, 1, 25),  # YAML auto-converts dates
+        'author': 'John'
+    }
+    assert body == 'Body content'
+
+
+def test_parse_frontmatter_with_list():
+    """Test parsing YAML with list values"""
+    content = "---\ntags:\n  - python\n  - testing\n---\nContent"
+    metadata, body = parse_frontmatter(content)
+    assert metadata == {'tags': ['python', 'testing']}
+    assert body == 'Content'
+
+
+def test_parse_frontmatter_body_preserves_formatting():
+    """Test that body content preserves its formatting"""
+    content = "---\ntitle: Test\n---\n\n# Heading\n\nParagraph with **bold** text."
+    metadata, body = parse_frontmatter(content)
+    assert metadata == {'title': 'Test'}
+    assert body == '# Heading\n\nParagraph with **bold** text.'
+
+
+def test_parse_frontmatter_no_closing_delimiter():
+    """Test content with opening but no closing delimiter"""
+    content = "---\ntitle: Test\nBody content without closing delimiter"
+    metadata, body = parse_frontmatter(content)
+    assert metadata == {}
+    assert body == content
+
+
+# ============================================================================
+# render_markdown tests
+# ============================================================================
+
+def test_render_markdown_basic():
+    """Test basic markdown to HTML conversion"""
+    md = "# Heading\n\nParagraph with **bold** and *italic*."
+    html = render_markdown(md)
+    assert '<h1>Heading</h1>' in html
+    assert '<strong>bold</strong>' in html
+    assert '<em>italic</em>' in html
+
+
+def test_render_markdown_with_code_block():
+    """Test markdown with fenced code block"""
+    md = "```python\nprint('hello')\n```"
+    html = render_markdown(md)
+    assert '<code>' in html or '<pre>' in html
+
+
+def test_render_markdown_with_table():
+    """Test markdown with table"""
+    md = "| A | B |\n|---|---|\n| 1 | 2 |"
+    html = render_markdown(md)
+    assert '<table>' in html
+
+
+def test_render_markdown_strip_first_heading_h1():
+    """Test stripping first h1 heading"""
+    md = "# Title\n\nSome content"
+    html = render_markdown(md, strip_first_heading=True)
+    assert '<h1>' not in html
+    assert 'Some content' in html
+
+
+def test_render_markdown_strip_first_heading_h2():
+    """Test stripping first h2 heading"""
+    md = "## Title\n\nSome content"
+    html = render_markdown(md, strip_first_heading=True)
+    assert '<h2>' not in html
+    assert 'Some content' in html
+
+
+def test_render_markdown_no_strip():
+    """Test markdown without stripping heading"""
+    md = "# Title\n\nSome content"
+    html = render_markdown(md, strip_first_heading=False)
+    assert '<h1>Title</h1>' in html
+    assert 'Some content' in html
+
+
+# ============================================================================
+# get_current_year tests
+# ============================================================================
+
+def test_get_current_year_default_format():
+    """Test getting current year with default format"""
+    from datetime import datetime
+    expected_year = datetime.now().year
+    result = get_current_year()
+    assert result == str(expected_year)
+
+
+def test_get_current_year_custom_format():
+    """Test getting current date with custom format"""
+    from datetime import datetime
+    result = get_current_year('%Y-%m-%d')
+    expected = datetime.now().strftime('%Y-%m-%d')
+    assert result == expected
+
+
+# ============================================================================
+# Additional get_output_path tests
+# ============================================================================
+
+def test_get_output_path_blog_post_underscore_date():
+    """Test blog post with underscore date format (YYYY_M_D-)"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+
+    source = content_root / '~user/2025_1_25-hello-world.md'
+    result = get_output_path(source, content_root, output_root)
+
+    assert result == output_root / '~user/hello-world.html'
+
+
+def test_get_output_path_blog_post_no_date_prefix():
+    """Test blog post without date prefix keeps full filename"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+
+    source = content_root / '~user/my-post.md'
+    result = get_output_path(source, content_root, output_root)
+
+    assert result == output_root / '~user/my-post.html'
+
+
+def test_get_output_path_deep_nested_user_folder():
+    """Test deeply nested user folder (e.g., ~user/category/subcategory/index.md)"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+
+    # For nested folders, it uses the immediate parent as filename
+    source = content_root / '~user/category/subcategory/index.md'
+    result = get_output_path(source, content_root, output_root)
+
+    assert result == output_root / '~user/subcategory.html'

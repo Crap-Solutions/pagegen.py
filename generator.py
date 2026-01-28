@@ -179,6 +179,71 @@ def get_current_year(format_str='%Y'):
     return datetime.now().strftime(format_str)
 
 
+def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_user, users):
+    """Generate sitemap.xml with all pages."""
+    base_url = config['site']['url']
+    urls = []
+    current_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Add homepage
+    urls.append({'loc': base_url + '/', 'lastmod': current_date, 'priority': '1.0', 'changefreq': 'daily'})
+
+    # Add regular pages
+    for page in pages:
+        rel_path = page['path'].relative_to(content_root)
+        # Skip homepage
+        if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
+            continue
+
+        output_path = get_output_path(page['path'], content_root, output_root)
+        url_path = str(output_path.relative_to(output_root))
+        urls.append({
+            'loc': base_url + '/' + url_path,
+            'lastmod': current_date,
+            'priority': '0.8',
+            'changefreq': 'weekly'
+        })
+
+    # Add user index pages
+    for user in users:
+        url_path = user['name'] + '/index.html'
+        urls.append({
+            'loc': base_url + '/' + url_path,
+            'lastmod': current_date,
+            'priority': '0.7',
+            'changefreq': 'weekly'
+        })
+
+    # Add blog posts
+    for username, posts in blog_posts_by_user.items():
+        for post in posts:
+            slug = post['slug']
+            url_path = username + '/' + slug + '.html'
+            post_date = post['metadata'].get('date', current_date)
+            urls.append({
+                'loc': base_url + '/' + url_path,
+                'lastmod': post_date,
+                'priority': '0.6',
+                'changefreq': 'monthly'
+            })
+
+    # Generate XML
+    xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    xml_lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    for url in urls:
+        xml_lines.append('  <url>')
+        xml_lines.append(f'    <loc>{url["loc"]}</loc>')
+        xml_lines.append(f'    <lastmod>{url["lastmod"]}</lastmod>')
+        xml_lines.append(f'    <changefreq>{url["changefreq"]}</changefreq>')
+        xml_lines.append(f'    <priority>{url["priority"]}</priority>')
+        xml_lines.append('  </url>')
+    xml_lines.append('</urlset>')
+
+    sitemap_path = output_root / 'sitemap.xml'
+    sitemap_path.write_text('\n'.join(xml_lines), encoding='utf-8')
+    print(f"Generated: {sitemap_path.relative_to(output_root)}")
+
+
 def generate_site(args):
     content_root = Path(args.content).resolve()
     output_root = Path(args.output).resolve()
@@ -257,6 +322,15 @@ def generate_site(args):
 
         template = env.get_template('home.html')
 
+        # Collect recent blog posts from all users
+        recent_posts = []
+        for username, posts in blog_posts_by_user.items():
+            for post in posts:
+                post['username'] = username
+                recent_posts.append(post)
+        # Sort by date (newest first)
+        recent_posts.sort(key=lambda x: str(x['metadata'].get('date', '')), reverse=True)
+
         # Prepare template context
         context = {
             'config': config,
@@ -269,6 +343,7 @@ def generate_site(args):
             'title': metadata.get('title', ''),
             'content': render_markdown(body, strip_first_heading=True),
             'downloads': metadata.get('downloads', []),
+            'recent_posts': recent_posts[:5],  # Limit to 5 recent posts
         }
 
         # Render and write
@@ -416,6 +491,9 @@ def generate_site(args):
                 dest = output_root / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(item.read_bytes())
+
+    # Generate sitemap
+    generate_sitemap(output_root, content_root, config, pages, blog_posts_by_user, users)
 
     print(f"\nSite generated to: {output_root}")
 

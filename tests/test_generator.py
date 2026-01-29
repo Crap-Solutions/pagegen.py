@@ -22,6 +22,7 @@ from generator import (
     get_relative_css_depth,
     render_markdown,
     get_current_year,
+    generate_sitemap,
 )
 
 
@@ -341,3 +342,113 @@ def test_get_output_path_deep_nested_user_folder():
     result = get_output_path(source, content_root, output_root)
 
     assert result == output_root / '~user/subcategory.html'
+
+
+# ============================================================================
+# generate_sitemap tests
+# ============================================================================
+
+def test_generate_sitemap_creates_file(tmp_path):
+    """Test that sitemap.xml file is created"""
+    from pathlib import Path
+    import tempfile
+    
+    content_root = Path(tmp_path) / 'content'
+    output_root = Path(tmp_path) / 'output'
+    content_root.mkdir()
+    output_root.mkdir()
+    
+    config = {
+        'site': {
+            'url': 'https://example.com'
+        }
+    }
+    
+    # Mock data
+    pages = []
+    blog_posts_by_user = {}
+    users = []
+    
+    generate_sitemap(output_root, content_root, config, pages, blog_posts_by_user, users)
+    
+    sitemap_file = output_root / 'sitemap.xml'
+    assert sitemap_file.exists()
+    assert sitemap_file.is_file()
+
+
+def test_generate_sitemap_contains_homepage(tmp_path):
+    """Test that homepage is included with highest priority"""
+    from pathlib import Path
+    
+    content_root = Path(tmp_path) / 'content'
+    output_root = Path(tmp_path) / 'output'
+    content_root.mkdir()
+    output_root.mkdir()
+    
+    config = {
+        'site': {
+            'url': 'https://example.com'
+        }
+    }
+    
+    generate_sitemap(output_root, content_root, config, [], {}, [])
+    
+    sitemap_content = (output_root / 'sitemap.xml').read_text()
+    assert '<loc>https://example.com/</loc>' in sitemap_content
+    assert '<priority>1.0</priority>' in sitemap_content
+    assert '<changefreq>daily</changefreq>' in sitemap_content
+
+
+def test_generate_sitemap_contains_users(tmp_path):
+    """Test that user index pages are included"""
+    from pathlib import Path
+    
+    content_root = Path(tmp_path) / 'content'
+    output_root = Path(tmp_path) / 'output'
+    content_root.mkdir()
+    output_root.mkdir()
+    
+    config = {
+        'site': {
+            'url': 'https://example.com'
+        }
+    }
+    
+    users = [
+        {'name': '~user1'},
+        {'name': '~user2'}
+    ]
+    
+    generate_sitemap(output_root, content_root, config, [], {}, users)
+    
+    sitemap_content = (output_root / 'sitemap.xml').read_text()
+    assert '<loc>https://example.com/~user1/index.html</loc>' in sitemap_content
+    assert '<loc>https://example.com/~user2/index.html</loc>' in sitemap_content
+    assert '<priority>0.7</priority>' in sitemap_content
+
+
+def test_generate_sitemap_valid_xml_structure(tmp_path):
+    """Test that generated sitemap has valid XML structure"""
+    from pathlib import Path
+    
+    content_root = Path(tmp_path) / 'content'
+    output_root = Path(tmp_path) / 'output'
+    content_root.mkdir()
+    output_root.mkdir()
+    
+    config = {
+        'site': {
+            'url': 'https://example.com'
+        }
+    }
+    
+    generate_sitemap(output_root, content_root, config, [], {}, [])
+    
+    sitemap_content = (output_root / 'sitemap.xml').read_text()
+    
+    # Check XML declaration
+    assert sitemap_content.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    # Check urlset namespace
+    assert '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' in sitemap_content
+    # Check closing tags
+    assert sitemap_content.strip().endswith('</urlset>')

@@ -12,6 +12,8 @@ A no-JS static site generator using Markdown + Jinja2 templates.
 - **Date-prefixed posts** — `YYYY-MM-DD-slug.md` format
 - **Config driven** — Simple `config.yaml` for site settings
 - **Static assets** — Automatic copying of CSS, images, etc.
+- **Blog feed** — Recent posts from all users shown on homepage
+- **Sitemap** — Auto-generated `sitemap.xml` for SEO
 
 ## Installation
 

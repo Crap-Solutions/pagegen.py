@@ -5,14 +5,15 @@ No-JS, lightweight, flexible
 """
 
 import argparse
-import os
 import re
+import shutil
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
 import markdown
 import yaml
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 def parse_frontmatter(content):
@@ -55,9 +56,27 @@ def get_home_link(output_path, output_root):
     return '../' * depth
 
 
-def get_output_path(source_path, content_root, output_root):
+def extract_slug(filename, metadata=None):
+    """
+    Derive a URL slug for a blog post.
+
+    Honors an explicit ``slug`` field in ``metadata`` when present; otherwise
+    strips a leading date prefix (``YYYY-MM-DD-`` or ``YYYY_M_D-``) and the
+    ``.md`` suffix from ``filename``.
+    """
+    if metadata and metadata.get('slug'):
+        return str(metadata['slug'])
+    slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)
+    slug = re.sub(r'\.md$', '', slug)
+    return slug
+
+
+def get_output_path(source_path, content_root, output_root, metadata=None):
     """
     Determine output HTML path based on source markdown path.
+
+    When ``metadata`` is supplied, an explicit ``slug`` is honored for blog
+    posts (otherwise the slug is derived from the filename).
     """
     rel_path = source_path.relative_to(content_root)
 
@@ -74,12 +93,9 @@ def get_output_path(source_path, content_root, output_root):
         if len(parts) == 2 and parts[-1] == 'index.md':
             return output_root / username / 'index.html'
 
-        # Blog post: extract slug from filename
+        # Blog post: honor metadata['slug'] if present, else derive from filename
         if len(parts) == 2:
-            filename = parts[-1]
-            # Remove date prefix if present (YYYY-MM-DD- or YYYY_M_D-)
-            slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)
-            slug = re.sub(r'\.md$', '', slug)
+            slug = extract_slug(parts[-1], metadata)
             return output_root / username / f'{slug}.html'
 
         # Nested user folder: content/~user/category/index.md -> output/~user/category.html
@@ -195,8 +211,8 @@ def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_use
         if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
             continue
 
-        output_path = get_output_path(page['path'], content_root, output_root)
-        url_path = str(output_path.relative_to(output_root))
+        output_path = get_output_path(page['path'], content_root, output_root, page.get('metadata'))
+        url_path = output_path.relative_to(output_root).as_posix()
         urls.append({
             'loc': base_url + '/' + url_path,
             'lastmod': current_date,
@@ -217,9 +233,9 @@ def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_use
     # Add blog posts
     for username, posts in blog_posts_by_user.items():
         for post in posts:
-            slug = post['slug']
+            slug = extract_slug(post['path'].name, post.get('metadata'))
             url_path = username + '/' + slug + '.html'
-            post_date = post['metadata'].get('date', current_date)
+            post_date = post.get('metadata', {}).get('date', current_date)
             urls.append({
                 'loc': base_url + '/' + url_path,
                 'lastmod': post_date,
@@ -227,20 +243,19 @@ def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_use
                 'changefreq': 'monthly'
             })
 
-    # Generate XML
-    xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>']
-    xml_lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    # Generate XML via ElementTree so all values are properly escaped.
+    ns = 'http://www.sitemaps.org/schemas/sitemap/0.9'
+    ET.register_namespace('', ns)
+    urlset = ET.Element(f'{{{ns}}}urlset')
     for url in urls:
-        xml_lines.append('  <url>')
-        xml_lines.append(f'    <loc>{url["loc"]}</loc>')
-        xml_lines.append(f'    <lastmod>{url["lastmod"]}</lastmod>')
-        xml_lines.append(f'    <changefreq>{url["changefreq"]}</changefreq>')
-        xml_lines.append(f'    <priority>{url["priority"]}</priority>')
-        xml_lines.append('  </url>')
-    xml_lines.append('</urlset>')
+        url_el = ET.SubElement(urlset, f'{{{ns}}}url')
+        ET.SubElement(url_el, f'{{{ns}}}loc').text = url['loc']
+        ET.SubElement(url_el, f'{{{ns}}}lastmod').text = str(url['lastmod'])
+        ET.SubElement(url_el, f'{{{ns}}}changefreq').text = url['changefreq']
+        ET.SubElement(url_el, f'{{{ns}}}priority').text = str(url['priority'])
 
     sitemap_path = output_root / 'sitemap.xml'
-    sitemap_path.write_text('\n'.join(xml_lines), encoding='utf-8')
+    ET.ElementTree(urlset).write(sitemap_path, encoding='utf-8', xml_declaration=True)
     print(f"Generated: {sitemap_path.relative_to(output_root)}")
 
 
@@ -249,8 +264,24 @@ def generate_site(args):
     output_root = Path(args.output).resolve()
     templates_root = Path(args.templates).resolve()
 
-    # Initialize Jinja environment
-    env = Environment(loader=FileSystemLoader(str(templates_root)))
+    # Optionally wipe the output directory before regenerating so deleted
+    # content does not leave stale files behind.
+    if getattr(args, 'clean', False) and output_root.exists():
+        protected = {content_root, templates_root}
+        if output_root in protected:
+            raise SystemExit(f"Refusing to --clean {output_root}: it is a source directory")
+        for child in output_root.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+    # Initialize Jinja environment (autoescape protects every variable; the
+    # trusted Markdown body is still inserted via the `| safe` filter).
+    env = Environment(
+        loader=FileSystemLoader(str(templates_root)),
+        autoescape=select_autoescape(['html', 'xml']),
+    )
     env.globals['now'] = get_current_year
 
     # Load config
@@ -258,6 +289,25 @@ def generate_site(args):
 
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
+
+    base_url = str(config.get('site', {}).get('url', '')).rstrip('/')
+
+    # Track written outputs so two content files can never silently overwrite
+    # the same generated page.
+    seen_outputs = set()
+
+    def page_url_of(output_path):
+        return output_path.relative_to(output_root).as_posix()
+
+    def write_output(output_path, html):
+        rel = page_url_of(output_path)
+        if rel in seen_outputs:
+            raise ValueError(
+                f"Output path collision: '{rel}' is generated by more than one content file"
+            )
+        seen_outputs.add(rel)
+        output_path.write_text(html, encoding='utf-8')
+        print(f"Generated: {rel}")
 
     # Scan content
     pages, blog_posts_by_user = scan_content(content_root)
@@ -298,14 +348,11 @@ def generate_site(args):
     for key in sections:
         sections[key].sort(key=lambda x: x['title'])
 
-    # Add slug to each blog post for template use
+    # Resolve a slug for each blog post (honors metadata['slug']) for template use
     for username, posts in blog_posts_by_user.items():
         posts.sort(key=lambda x: str(x['metadata'].get('date', '')), reverse=True)
         for post in posts:
-            filename = post['path'].name
-            slug = re.sub(r'^\d{4}[-_]\d{1,2}[-_]\d{1,2}[-_]', '', filename)
-            slug = re.sub(r'\.md$', '', slug)
-            post['slug'] = slug
+            post['slug'] = extract_slug(post['path'].name, post['metadata'])
 
     # Process homepage
     homepage_file = content_root / 'index.md'
@@ -344,12 +391,13 @@ def generate_site(args):
             'content': render_markdown(body, strip_first_heading=True),
             'downloads': metadata.get('downloads', []),
             'recent_posts': recent_posts[:5],  # Limit to 5 recent posts
+            'page_url': page_url_of(output_path),
+            'canonical_url': base_url + '/' + page_url_of(output_path),
         }
 
         # Render and write
         html = template.render(**context)
-        output_path.write_text(html, encoding='utf-8')
-        print(f"Generated: {output_path.relative_to(output_root)}")
+        write_output(output_path, html)
 
     # Process user index pages and blog posts
     for user in users:
@@ -398,11 +446,12 @@ def generate_site(args):
             context['content'] = render_markdown(body, strip_first_heading=True)
             context['downloads'] = metadata.get('downloads', [])
             context['blog_content'] = render_markdown(body, strip_first_heading=True)
+            context['page_url'] = page_url_of(output_path)
+            context['canonical_url'] = base_url + '/' + context['page_url']
 
             # Render and write
             html = template.render(**context)
-            output_path.write_text(html, encoding='utf-8')
-            print(f"Generated: {output_path.relative_to(output_root)}")
+            write_output(output_path, html)
 
         # Process blog posts for this user
         user_posts = blog_posts_by_user.get(username, [])
@@ -411,7 +460,7 @@ def generate_site(args):
             metadata = post['metadata'].copy()
             body = post['body']
 
-            output_path = get_output_path(source_path, content_root, output_root)
+            output_path = get_output_path(source_path, content_root, output_root, metadata)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             css_rel_path = get_relative_css_depth(source_path, content_root, output_root)
@@ -432,11 +481,12 @@ def generate_site(args):
                 'content': render_markdown(body, strip_first_heading=True),
                 'downloads': metadata.get('downloads', []),
                 'metadata': metadata,  # Pass metadata for date display
+                'page_url': page_url_of(output_path),
+                'canonical_url': base_url + '/' + page_url_of(output_path),
             }
 
             html = template.render(**context)
-            output_path.write_text(html, encoding='utf-8')
-            print(f"Generated: {output_path.relative_to(output_root)}")
+            write_output(output_path, html)
 
     # Process each regular page
     for page in pages:
@@ -476,11 +526,12 @@ def generate_site(args):
         context['content'] = render_markdown(body)
         context['downloads'] = metadata.get('downloads', [])
         context['metadata'] = metadata  # Pass metadata for date display
+        context['page_url'] = page_url_of(output_path)
+        context['canonical_url'] = base_url + '/' + context['page_url']
 
         # Render and write
         html = template.render(**context)
-        output_path.write_text(html, encoding='utf-8')
-        print(f"Generated: {output_path.relative_to(output_root)}")
+        write_output(output_path, html)
 
     # Copy static files
     static_root = Path(args.static)
@@ -505,6 +556,7 @@ def main():
     parser.add_argument('--config', default='config.yaml', help='Config file (default: config.yaml)')
     parser.add_argument('--static', default='static', help='Static files directory (default: static)')
     parser.add_argument('--templates', default='templates', help='Templates directory (default: templates)')
+    parser.add_argument('--clean', action='store_true', help='Remove output directory contents before generating')
 
     args = parser.parse_args()
     generate_site(args)

@@ -23,6 +23,8 @@ from generator import (
     render_markdown,
     get_current_year,
     generate_sitemap,
+    generate_site,
+    extract_slug,
 )
 
 
@@ -446,9 +448,155 @@ def test_generate_sitemap_valid_xml_structure(tmp_path):
     
     sitemap_content = (output_root / 'sitemap.xml').read_text()
     
-    # Check XML declaration
-    assert sitemap_content.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    # Check XML declaration (format varies across XML emitters)
+    assert sitemap_content.startswith('<?xml version')
     # Check urlset namespace
     assert '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' in sitemap_content
     # Check closing tags
     assert sitemap_content.strip().endswith('</urlset>')
+
+
+# ============================================================================
+# extract_slug / metadata slug tests
+# ============================================================================
+
+def test_extract_slug_strips_date_prefix():
+    """Slug derived from filename with date prefix"""
+    assert extract_slug('2025-01-25-hello-world.md') == 'hello-world'
+
+
+def test_extract_slug_strips_underscore_date():
+    """Slug derived from filename with underscore date prefix"""
+    assert extract_slug('2025_1_25-hello-world.md') == 'hello-world'
+
+
+def test_extract_slug_no_date_prefix():
+    """Filename without date prefix keeps its basename"""
+    assert extract_slug('my-post.md') == 'my-post'
+
+
+def test_extract_slug_honors_metadata_slug():
+    """Explicit slug in metadata takes precedence over the filename"""
+    assert extract_slug('2025-01-25-ignored.md', {'slug': 'custom-slug'}) == 'custom-slug'
+
+
+def test_extract_slug_ignores_empty_metadata_slug():
+    """An empty slug in metadata falls back to the filename"""
+    assert extract_slug('2025-01-25-hello.md', {'slug': ''}) == 'hello'
+
+
+def test_get_output_path_honors_metadata_slug():
+    """Blog post output path honors an explicit slug from metadata"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+
+    source = content_root / '~user/2025-01-25-filename-slug.md'
+    metadata = {'slug': 'metadata-slug'}
+    result = get_output_path(source, content_root, output_root, metadata)
+
+    assert result == output_root / '~user' / 'metadata-slug.html'
+
+
+# ============================================================================
+# generate_site: autoescape, collisions, sitemap escaping
+# ============================================================================
+
+def _write_config(path):
+    path.write_text(
+        "site:\n"
+        "  title: Test\n"
+        "  description: desc\n"
+        "  url: https://example.com\n"
+        "css_filename: test.css\n",
+        encoding='utf-8',
+    )
+
+
+def _make_args(content, output, config, templates):
+    from argparse import Namespace
+    return Namespace(
+        content=str(content),
+        output=str(output),
+        config=str(config),
+        static='__no_such_static__',
+        templates=str(templates),
+        clean=False,
+    )
+
+
+def test_generate_site_escapes_frontmatter_title(tmp_path):
+    """Autoescape must escape HTML in frontmatter fields (not the | safe body)"""
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    content.mkdir()
+    # Malicious title; harmless body
+    (content / 'index.md').write_text(
+        '---\ntitle: <script>alert(1)</script>\n---\nhello world',
+        encoding='utf-8',
+    )
+    config = tmp_path / 'config.yaml'
+    _write_config(config)
+    output = tmp_path / 'output'
+
+    generate_site(_make_args(content, output, config, repo / 'templates'))
+
+    html = (output / 'index.html').read_text(encoding='utf-8')
+    # Raw script tag must NOT appear; it must be HTML-escaped
+    assert '<script>alert(1)</script>' not in html
+    assert '&lt;script&gt;' in html
+
+
+def test_generate_site_detects_output_collision(tmp_path):
+    """Two content files mapping to the same output must fail loudly"""
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    (content / 'a').mkdir(parents=True)
+    (content / 'b').mkdir(parents=True)
+    # Both flatten to output/pages/about.html
+    (content / 'a' / 'about.md').write_text('---\ntitle: A\n---\n# A', encoding='utf-8')
+    (content / 'b' / 'about.md').write_text('---\ntitle: B\n---\n# B', encoding='utf-8')
+    config = tmp_path / 'config.yaml'
+    _write_config(config)
+    output = tmp_path / 'output'
+
+    with pytest.raises(ValueError, match='Output path collision'):
+        generate_site(_make_args(content, output, config, repo / 'templates'))
+
+
+def test_generate_site_clean_wipes_output(tmp_path):
+    """--clean removes stale files left from a previous build"""
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    content.mkdir()
+    (content / 'index.md').write_text('---\ntitle: Home\n---\nhome', encoding='utf-8')
+    config = tmp_path / 'config.yaml'
+    _write_config(config)
+    output = tmp_path / 'output'
+    output.mkdir()
+    stale = output / 'stale.html'
+    stale.write_text('old', encoding='utf-8')
+
+    args = _make_args(content, output, config, repo / 'templates')
+    args.clean = True
+    generate_site(args)
+
+    assert not stale.exists()
+    assert (output / 'index.html').exists()
+
+
+def test_sitemap_escapes_special_characters(tmp_path):
+    """A base URL containing '&' must produce valid, escaped XML"""
+    content_root = tmp_path / 'content'
+    output_root = tmp_path / 'output'
+    content_root.mkdir()
+    output_root.mkdir()
+
+    config = {'site': {'url': 'https://example.com/a&b'}}
+    generate_sitemap(output_root, content_root, config, [], {}, [])
+
+    sitemap = (output_root / 'sitemap.xml').read_text(encoding='utf-8')
+    # '&' in the URL must be escaped to '&amp;', never a raw '&'
+    assert 'https://example.com/a&amp;b/' in sitemap
+    # Must parse as well-formed XML
+    import xml.etree.ElementTree as ET
+    ET.fromstring(sitemap)

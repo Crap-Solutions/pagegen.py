@@ -709,3 +709,35 @@ def test_404_excluded_from_sections_and_sitemap(tmp_path):
     sitemap = (output / 'sitemap.xml').read_text()
     assert '404.html' not in sitemap               # not in sitemap
     ET.fromstring(sitemap)                          # still well-formed
+
+
+def test_404_uses_absolute_asset_paths(tmp_path):
+    """ErrorDocument serves /404.html under the bogus URL, so the 404 page must
+    reference CSS/favicon/home with root-absolute paths (not relative ones that
+    would resolve against the missing URL and 404 themselves)."""
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    content.mkdir()
+    (content / 'index.md').write_text('---\ntitle: Home\n---\nhome', encoding='utf-8')
+    (content / '404.md').write_text('---\ntitle: 404\n---\nmissing', encoding='utf-8')
+    config = tmp_path / 'config.yaml'
+    config.write_text(
+        "site:\n  title: T\n  description: d\n  url: https://example.com\ncss_filename: t.css\n",
+        encoding='utf-8',
+    )
+    output = tmp_path / 'output'
+    from argparse import Namespace
+    generate_site(Namespace(content=str(content), output=str(output), config=str(config),
+                            static='__none__', templates=str(repo / 'templates'), clean=False))
+
+    page = (output / '404.html').read_text()
+    # Root-absolute asset references (ErrorDocument serves the page under the
+    # bogus URL, so relative links would resolve against that URL and 404).
+    assert 'href="/t.css"' in page               # CSS absolute
+    assert 'href="/index.html"' in page          # footer Home link absolute
+    # No relative asset references that would break under a bogus URL
+    assert 'href="t.css"' not in page
+
+    # Sanity: homepage (contrast) keeps its relative paths
+    home = (output / 'index.html').read_text()
+    assert 'href="t.css"' in home

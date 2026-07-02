@@ -477,6 +477,42 @@ def generate_site(args):
         html = template.render(**context)
         write_output(output_path, html)
 
+    # Process the custom 404 page (if present).
+    #
+    # ErrorDocument serves /404.html under the *original* (bogus) URL, so the
+    # browser resolves relative asset links against that bogus path and they
+    # 404. Root-absolute paths (e.g. "/crap.css") resolve against the site root
+    # instead, so the page renders correctly from any URL.
+    error_file = content_root / '404.md'
+    if error_file.exists():
+        with open(error_file, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+
+        metadata, body = parse_frontmatter(raw_content)
+        output_path = output_root / '404.html'
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        template = env.get_template('page.html')
+
+        context = {
+            'config': config,
+            'css_rel_path': '/',       # root-absolute: "/crap.css"
+            'home_link': '/',          # root-absolute: "/index.html"
+            'back_link': '/',          # header link back to site root
+            'sections': sections,
+            'users': users,
+            'user_info': config.get('user', {}),
+            'title': metadata.get('title', ''),
+            'content': render_markdown(body),
+            'downloads': metadata.get('downloads', []),
+            'metadata': metadata,
+            'page_url': page_url_of(output_path),
+            'canonical_url': base_url + '/' + page_url_of(output_path),
+        }
+
+        html = template.render(**context)
+        write_output(output_path, html)
+
     # Process user index pages and blog posts
     for user in users:
         username = user['name']
@@ -575,6 +611,9 @@ def generate_site(args):
         # Skip homepage (already processed)
         rel_path = source_path.relative_to(content_root)
         if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
+            continue
+        # Skip the custom 404 page (rendered separately with absolute paths)
+        if rel_path.name == '404.md' and rel_path.parent == Path('.'):
             continue
 
         output_path = get_output_path(source_path, content_root, output_root)

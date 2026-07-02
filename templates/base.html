@@ -5,6 +5,7 @@
     <title>{% if title %}{{ title }} {% else %} {{ config.site.title }} {% endif %}</title>
     <link rel="stylesheet" href="{{ css_rel_path }}{{ config.css_filename }}">
     <link rel="icon" href="{{ css_rel_path }}favicon.ico" type="image/x-icon">
+    <link rel="alternate" type="application/rss+xml" title="{{ config.site.title }} Feed" href="{{ config.site.url }}/feed.xml">
     <meta charset="utf-8">
     <meta name="resource-type" content="document">
     <meta name="description" content="{{ config.site.description }}">

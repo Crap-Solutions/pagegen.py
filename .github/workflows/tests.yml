@@ -24,3 +24,5 @@ jobs:
           python generator.py --content content --output /tmp/build --clean
           test -f /tmp/build/index.html
           test -f /tmp/build/sitemap.xml
+          test -f /tmp/build/feed.xml
+          test -f /tmp/build/404.html

@@ -25,6 +25,8 @@ from generator import (
     generate_sitemap,
     generate_site,
     extract_slug,
+    generate_feed,
+    format_rss_date,
 )
 
 
@@ -600,3 +602,110 @@ def test_sitemap_escapes_special_characters(tmp_path):
     # Must parse as well-formed XML
     import xml.etree.ElementTree as ET
     ET.fromstring(sitemap)
+
+
+# ============================================================================
+# format_rss_date tests
+# ============================================================================
+
+def test_format_rss_date_from_string():
+    """ISO date string -> RFC 822"""
+    assert format_rss_date('2025-01-25') == 'Sat, 25 Jan 2025 00:00:00 +0000'
+
+
+def test_format_rss_date_from_date_object():
+    """datetime.date object -> RFC 822"""
+    from datetime import date
+    assert format_rss_date(date(2025, 1, 25)) == 'Sat, 25 Jan 2025 00:00:00 +0000'
+
+
+def test_format_rss_date_empty_returns_none():
+    """Empty / unparseable -> None (caller omits pubDate)"""
+    assert format_rss_date('') is None
+    assert format_rss_date('not-a-date') is None
+
+
+# ============================================================================
+# generate_feed tests
+# ============================================================================
+
+def test_generate_feed_creates_file(tmp_path):
+    """feed.xml is created and is well-formed RSS"""
+    import xml.etree.ElementTree as ET
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    config = {'site': {'url': 'https://example.com', 'title': 'T', 'description': 'd'}}
+    generate_feed(output_root, tmp_path, config, {})
+    feed = (output_root / 'feed.xml')
+    assert feed.exists()
+    ET.fromstring(feed.read_text())  # well-formed
+
+
+def test_generate_feed_lists_posts_chronological(tmp_path):
+    """Posts appear newest-first; title/channel populated"""
+    import xml.etree.ElementTree as ET
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    config = {'site': {'url': 'https://example.com', 'title': 'MySite', 'description': 'd'}}
+    posts = {
+        '~u': [
+            {'path': Path('/c/~u/2025-01-25-old.md'), 'metadata': {'title': 'Old', 'date': '2025-01-25'}},
+            {'path': Path('/c/~u/2025-01-28-new.md'), 'metadata': {'title': 'New', 'date': '2025-01-28'}},
+        ]
+    }
+    generate_feed(output_root, tmp_path, config, posts)
+    root = ET.fromstring((output_root / 'feed.xml').read_text())
+    titles = [i.find('title').text for i in root.iter('item')]
+    assert titles == ['New', 'Old']  # newest first
+    assert root.find('channel/title').text == 'MySite'
+
+
+def test_generate_feed_escapes_special_characters(tmp_path):
+    """A title with '&' is escaped in the XML"""
+    import xml.etree.ElementTree as ET
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    config = {'site': {'url': 'https://example.com', 'title': 'T', 'description': 'd'}}
+    posts = {'~u': [{'path': Path('/c/~u/2025-01-25-a.md'),
+                     'metadata': {'title': 'A & B', 'date': '2025-01-25'}}]}
+    generate_feed(output_root, tmp_path, config, posts)
+    root = ET.fromstring((output_root / 'feed.xml').read_text())
+    assert root.find('channel/item/title').text == 'A & B'  # parsed back correctly
+
+
+# ============================================================================
+# 404 page routing
+# ============================================================================
+
+def test_get_output_path_404():
+    """Top-level content/404.md -> output/404.html"""
+    content_root = Path('/content')
+    output_root = Path('/output')
+    result = get_output_path(content_root / '404.md', content_root, output_root)
+    assert result == output_root / '404.html'
+
+
+def test_404_excluded_from_sections_and_sitemap(tmp_path):
+    """404.md renders to 404.html but is not a section entry or in the sitemap"""
+    import xml.etree.ElementTree as ET
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    content.mkdir()
+    (content / 'index.md').write_text('---\ntitle: Home\n---\nhome', encoding='utf-8')
+    (content / '404.md').write_text('---\ntitle: 404\n---\nmissing', encoding='utf-8')
+    config = tmp_path / 'config.yaml'
+    config.write_text(
+        "site:\n  title: T\n  description: d\n  url: https://example.com\ncss_filename: t.css\n",
+        encoding='utf-8',
+    )
+    output = tmp_path / 'output'
+    from argparse import Namespace
+    generate_site(Namespace(content=str(content), output=str(output), config=str(config),
+                            static='__none__', templates=str(repo / 'templates'), clean=False))
+
+    assert (output / '404.html').exists()         # rendered
+    homepage = (output / 'index.html').read_text()
+    assert 'pages/404.html' not in homepage        # not a section entry on the homepage
+    sitemap = (output / 'sitemap.xml').read_text()
+    assert '404.html' not in sitemap               # not in sitemap
+    ET.fromstring(sitemap)                          # still well-formed

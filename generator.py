@@ -84,6 +84,10 @@ def get_output_path(source_path, content_root, output_root, metadata=None):
     if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
         return output_root / 'index.html'
 
+    # Custom error page: content/404.md -> output/404.html
+    if rel_path.name == '404.md' and rel_path.parent == Path('.'):
+        return output_root / '404.html'
+
     # User folders: content/~user/* -> output/~user/*
     parts = list(rel_path.parts)
     if len(parts) > 1 and parts[0].startswith('~'):
@@ -207,8 +211,10 @@ def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_use
     # Add regular pages
     for page in pages:
         rel_path = page['path'].relative_to(content_root)
-        # Skip homepage
+        # Skip homepage and the custom 404 page
         if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
+            continue
+        if rel_path.name == '404.md' and rel_path.parent == Path('.'):
             continue
 
         output_path = get_output_path(page['path'], content_root, output_root, page.get('metadata'))
@@ -257,6 +263,75 @@ def generate_sitemap(output_root, content_root, config, pages, blog_posts_by_use
     sitemap_path = output_root / 'sitemap.xml'
     ET.ElementTree(urlset).write(sitemap_path, encoding='utf-8', xml_declaration=True)
     print(f"Generated: {sitemap_path.relative_to(output_root)}")
+
+
+def format_rss_date(date_value):
+    """
+    Format a date value as an RFC 822 string for an RSS ``<pubDate>``.
+
+    Accepts a ``datetime``/``date`` object or a string. Returns ``None`` for an
+    empty/unparseable value so the caller can omit the element.
+    """
+    if hasattr(date_value, 'strftime'):
+        return date_value.strftime('%a, %d %b %Y 00:00:00 +0000')
+    text = str(date_value).strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.strptime(text[:10], '%Y-%m-%d')
+    except ValueError:
+        return None
+    return parsed.strftime('%a, %d %b %Y 00:00:00 +0000')
+
+
+def generate_feed(output_root, content_root, config, blog_posts_by_user):
+    """Generate an RSS 2.0 feed (feed.xml) from all blog posts across users."""
+    site = config.get('site', {})
+    base_url = str(site.get('url', '')).rstrip('/')
+    title = site.get('title', '')
+    description = site.get('description', '')
+    build_date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')
+
+    # Collect posts from all users, newest first.
+    entries = []
+    for username, posts in blog_posts_by_user.items():
+        for post in posts:
+            metadata = post.get('metadata', {})
+            slug = extract_slug(post['path'].name, metadata)
+            url_path = username + '/' + slug + '.html'
+            link = base_url + '/' + url_path
+            raw_date = metadata.get('date', '')
+            entries.append({
+                'title': metadata.get('title', slug),
+                'link': link,
+                # Sort by the raw date (ISO strings / date objects compare
+                # chronologically); the RFC 822 string does not.
+                'sort_key': str(raw_date),
+                'pub_date': format_rss_date(raw_date),
+                'description': metadata.get('description', ''),
+            })
+    entries.sort(key=lambda e: e['sort_key'], reverse=True)
+
+    rss = ET.Element('rss', attrib={'version': '2.0'})
+    channel = ET.SubElement(rss, 'channel')
+    ET.SubElement(channel, 'title').text = title
+    ET.SubElement(channel, 'link').text = base_url + '/'
+    ET.SubElement(channel, 'description').text = description
+    ET.SubElement(channel, 'lastBuildDate').text = build_date
+
+    for entry in entries:
+        item = ET.SubElement(channel, 'item')
+        ET.SubElement(item, 'title').text = entry['title']
+        ET.SubElement(item, 'link').text = entry['link']
+        ET.SubElement(item, 'guid', attrib={'isPermaLink': 'true'}).text = entry['link']
+        if entry['pub_date']:
+            ET.SubElement(item, 'pubDate').text = entry['pub_date']
+        if entry['description']:
+            ET.SubElement(item, 'description').text = entry['description']
+
+    feed_path = output_root / 'feed.xml'
+    ET.ElementTree(rss).write(feed_path, encoding='utf-8', xml_declaration=True)
+    print(f"Generated: {feed_path.relative_to(output_root)}")
 
 
 def generate_site(args):
@@ -326,6 +401,9 @@ def generate_site(args):
         # Check if this is the homepage
         if rel_path.name == 'index.md' and rel_path.parent == Path('.'):
             homepage_metadata = metadata
+            continue
+        # Skip the custom 404 page (rendered separately, not a section entry)
+        if rel_path.name == '404.md' and rel_path.parent == Path('.'):
             continue
 
         # Get section from metadata
@@ -545,6 +623,9 @@ def generate_site(args):
 
     # Generate sitemap
     generate_sitemap(output_root, content_root, config, pages, blog_posts_by_user, users)
+
+    # Generate RSS feed
+    generate_feed(output_root, content_root, config, blog_posts_by_user)
 
     print(f"\nSite generated to: {output_root}")
 

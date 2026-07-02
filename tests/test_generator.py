@@ -607,7 +607,7 @@ def test_homepage_lists_recent_posts_with_rss_link(tmp_path):
     html = (output / 'index.html').read_text(encoding='utf-8')
     # RSS subscribe link points at the generated feed
     assert 'href="https://example.com/feed.xml"' in html
-    assert '📰 RSS' in html
+    assert '📰</a>' in html  # emoji-only link, no text label
     # Newest five posts present, oldest (post1) omitted by the 5-item cap
     assert 'Post 6' in html and 'Post 2' in html
     assert 'Post 1' not in html

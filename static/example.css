@@ -35,3 +35,34 @@ pre {
     border-radius: 5px;
     overflow-x: auto;
 }
+
+/* Blog feed on the homepage */
+.rss-link {
+    font-size: 0.7em;
+    font-weight: normal;
+    color: #666;
+    margin-left: 0.5em;
+}
+.rss-link:hover {
+    color: #0066cc;
+}
+.blog-posts {
+    list-style-type: none;
+    padding: 0;
+}
+.blog-post {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1em;
+    padding: 0.3em 0;
+    border-bottom: 1px dotted #ccc;
+}
+.blog-post:last-child {
+    border-bottom: none;
+}
+.blog-post-date {
+    color: #666;
+    font-size: 0.85em;
+    white-space: nowrap;
+}

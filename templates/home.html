@@ -28,4 +28,18 @@
         </ul>
       </section>
 {% endif %}
+
+{% if recent_posts %}
+      <section class="blog-feed">
+        <h3>Recent Blog Posts <a href="{{ config.site.url }}/feed.xml" class="rss-link" title="Subscribe via RSS">📰 RSS</a></h3>
+        <ul class="blog-posts">
+    {% for post in recent_posts %}
+          <li class="blog-post">
+            <a href="{{ post.username }}/{{ post.slug }}.html">{{ post.metadata.title }}</a>
+            <span class="blog-post-date">{{ post.metadata.get('date', '') }}</span>
+          </li>
+    {% endfor %}
+        </ul>
+      </section>
+{% endif %}
 {% endblock %}

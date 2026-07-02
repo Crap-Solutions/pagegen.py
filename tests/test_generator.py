@@ -586,6 +586,37 @@ def test_generate_site_clean_wipes_output(tmp_path):
     assert (output / 'index.html').exists()
 
 
+def test_homepage_lists_recent_posts_with_rss_link(tmp_path):
+    """Homepage renders up to 5 newest posts and links to the RSS feed"""
+    repo = Path(__file__).parent.parent
+    content = tmp_path / 'content'
+    content.mkdir()
+    (content / 'index.md').write_text('---\ntitle: Home\n---\nhome', encoding='utf-8')
+    # Six posts: only the five newest should appear (newest first).
+    user_dir = content / '~alice'
+    user_dir.mkdir()
+    for i in range(1, 7):
+        (user_dir / f'2025-01-2{i}-post{i}.md').write_text(
+            f'---\ntitle: Post {i}\ndate: 2025-01-2{i}\n---\nbody {i}', encoding='utf-8')
+    config = tmp_path / 'config.yaml'
+    _write_config(config)
+    output = tmp_path / 'output'
+
+    generate_site(_make_args(content, output, config, repo / 'templates'))
+
+    html = (output / 'index.html').read_text(encoding='utf-8')
+    # RSS subscribe link points at the generated feed
+    assert 'href="https://example.com/feed.xml"' in html
+    assert '📰 RSS' in html
+    # Newest five posts present, oldest (post1) omitted by the 5-item cap
+    assert 'Post 6' in html and 'Post 2' in html
+    assert 'Post 1' not in html
+    # Order is newest-first (Post 6 before Post 2)
+    assert html.index('Post 6') < html.index('Post 2')
+    # Post links are relative to the user folder
+    assert 'href="~alice/post6.html"' in html
+
+
 def test_sitemap_escapes_special_characters(tmp_path):
     """A base URL containing '&' must produce valid, escaped XML"""
     content_root = tmp_path / 'content'

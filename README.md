@@ -13,6 +13,8 @@ A no-JS static site generator using Markdown + Jinja2 templates.
 - **Config driven** — Simple `config.yaml` for site settings
 - **Static assets** — Automatic copying of CSS, images, etc.
 - **Blog feed** — Recent posts from all users shown on homepage
+- **RSS feed** — Auto-generated `feed.xml` of all blog posts
+- **Custom 404** — `content/404.md` renders to a root `404.html`
 - **Sitemap** — Auto-generated `sitemap.xml` for SEO
 
 ## Installation
